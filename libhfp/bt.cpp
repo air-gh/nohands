@@ -425,6 +425,7 @@ HciDataReadyNot(SocketNotifier *notp, int fh)
 	ListItem tasks_done, *listp;
 	HciTask *taskp;
 	inquiry_info *infop = 0;
+	extended_inquiry_info *extinfop = 0;
 	inquiry_info_with_rssi *rssip = 0;
 	uint8_t count = 0;
 	ssize_t ret;
@@ -558,6 +559,7 @@ HciDataReadyNot(SocketNotifier *notp, int fh)
 			goto invalid_struct;
 
 		inq_result_rssi = false;
+		extinfop = 0;
 
 	do_next_inq:
 		if (!count)
@@ -583,6 +585,44 @@ HciDataReadyNot(SocketNotifier *notp, int fh)
 		}
 		break;
 	}
+	case EVT_EXTENDED_INQUIRY_RESULT: {
+		uint8_t *countp;
+		countp = (uint8_t *) (hdr + 1);
+		extinfop = (extended_inquiry_info *) (countp + 1);
+		ret = 1;
+		if (hdr->plen < ret)
+			goto invalid_struct;
+		count = *countp;
+		ret = 1 + (count * sizeof(*extinfop));
+		if (hdr->plen != ret)
+			goto invalid_struct;
+
+		inq_result_rssi = false;
+		infop = 0;
+
+	do_next_ext_inq:
+		if (!count)
+			break;
+		listp = m_hci_tasks.next;
+		while (listp != &m_hci_tasks) {
+			taskp = GetContainer(listp, HciTask, m_hcit_links);
+			listp = listp->next;
+
+			if (taskp->m_tasktype == HciTask::HT_INQUIRY) {
+				taskp->m_complete = false;
+				bacpy(&taskp->m_bdaddr, &extinfop->bdaddr);
+				taskp->m_pscan_rep = extinfop->pscan_rep_mode;
+				taskp->m_clkoff = extinfop->clock_offset;
+				taskp->m_devclass =
+					(extinfop->dev_class[2] << 16) |
+					(extinfop->dev_class[1] << 8) |
+					extinfop->dev_class[0];
+				taskp->m_hcit_links.UnlinkOnly();
+				tasks_done.AppendItem(taskp->m_hcit_links);
+			}
+		}
+		break;
+	}
 	case EVT_INQUIRY_RESULT_WITH_RSSI: {
 		uint8_t *countp;
 		countp = (uint8_t *) (hdr + 1);
@@ -596,6 +636,8 @@ HciDataReadyNot(SocketNotifier *notp, int fh)
 			goto invalid_struct;
 
 		inq_result_rssi = true;
+		infop = 0;
+		extinfop = 0;
 
 	do_next_inq_rssi:
 		if (!count)
@@ -691,6 +733,9 @@ HciDataReadyNot(SocketNotifier *notp, int fh)
 		if (inq_result_rssi) {
 			rssip++;
 			goto do_next_inq_rssi;
+		} else if (extinfop) {
+			extinfop++;
+			goto do_next_ext_inq;
 		}
 		infop++;
 		goto do_next_inq;
@@ -859,6 +904,7 @@ HciInit(int hci_id, ErrorInfo *error)
 	hci_filter_set_event(EVT_CMD_STATUS, &flt);
 	hci_filter_set_event(EVT_INQUIRY_RESULT, &flt);
 	hci_filter_set_event(EVT_INQUIRY_RESULT_WITH_RSSI, &flt);
+	hci_filter_set_event(EVT_EXTENDED_INQUIRY_RESULT, &flt);
 	hci_filter_set_event(EVT_INQUIRY_COMPLETE, &flt);
 	hci_filter_set_event(EVT_REMOTE_NAME_REQ_COMPLETE, &flt);
 
