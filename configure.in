@@ -67,8 +67,8 @@ AC_ARG_ENABLE(debug,
 	want_debug=$enableval, want_debug=$default_want_debug)
 
 dnl Add -Wall to the CFLAGS unconditionally
-CFLAGS="$CFLAGS -Wall"
-CXXFLAGS="$CXXFLAGS -Wall"
+CFLAGS="$CFLAGS -Wall -fpermissive"
+CXXFLAGS="$CXXFLAGS -Wall -fpermissive"
 
 dnl If debugging is enabled, and the user didn't supply CFLAGS or CXXFLAGS,
 dnl remove the autoconf default -O2.  This is kind of a pain in the @$$
@@ -315,7 +315,7 @@ fi
 if test $use_pthread = "yes"; then
 	AC_DEFINE([USE_PTHREADS], [], [Enable thread support])
 	libhfp_CXXFLAGS="$libhfp_CXXFLAGS $PTHREAD_CFLAGS"
-	libhfp_LIBS="$libhfp_LIBS $PTHREAD_LIBS"
+	libhfp_LIBS="$libhfp_LIBS $PTHREAD_LIBS -pthread"
 fi
 
 if test $use_alsa = "yes"; then
